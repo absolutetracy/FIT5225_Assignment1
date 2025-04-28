@@ -1,5 +1,5 @@
 from locust import HttpUser, TaskSet, task, between, LoadTestShape
-import uuid, base64, os
+import uuid, base64, os, time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import gevent
 
@@ -23,27 +23,32 @@ if not images:
     raise ValueError("No images found in the folder!")
 
 def monitor_failures(environment):
-    FAILURE_THRESHOLD = 0.05
-    CHECK_INTERVAL = 3
+    FAILURE_THRESHOLD = 0.0
+    CHECK_INTERVAL = 1
     while True:
         gevent.sleep(CHECK_INTERVAL)
         fail_ratio = environment.runner.stats.total.fail_ratio
         if fail_ratio > FAILURE_THRESHOLD:
+            current_users = environment.runner.user_count
             print(f"Failure ratio exceeded: {fail_ratio:.2f} > {FAILURE_THRESHOLD}")
-            print(f"The number of users: {environment.runner.user_count}")
+            print(f"The number of users: {current_users}")
+            with open("failure_log.txt", "a") as log_file:
+                log_file.write(f"Test time: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+                log_file.write(f"Failure ratio exceeded: {fail_ratio:.2f} > {FAILURE_THRESHOLD}\n")
+                log_file.write(f"Failure at {current_users} users\n")
+
             environment.runner.quit()
             break
 
-class StepLoadShape(LoadTestShape):
-    step_time = 30
-    step_users = 10
-    spawn_rate = 5
-    base_users = 5
+class LinearLoadShape(LoadTestShape):
+    max_users = 1000
+    spawn_rate = 1
 
     def tick(self):
         run_time = self.get_run_time()
-        current_step = run_time // self.step_time
-        total_users = self.base_users + (current_step * self.step_users)
+        if run_time * self.spawn_rate >= self.max_users:
+            return None
+        total_users = int(run_time * self.spawn_rate)
         return (total_users, self.spawn_rate)
 
 
@@ -53,7 +58,7 @@ class HelloWorldUser(HttpUser):
     #@task
     #def hello_world(self):
     #    self.client.get("/")
-    host = "http://localhost:8000"
+    # host = "http://localhost:8000"
 
     @task
     def test_keypoints(self):
