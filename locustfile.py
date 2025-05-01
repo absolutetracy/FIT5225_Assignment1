@@ -1,15 +1,21 @@
 from locust import HttpUser, TaskSet, task, between, LoadTestShape
-import uuid, base64, os, time, random, argparse
+import uuid, base64, os, time, random, argparse, sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import gevent
 
 parser = argparse.ArgumentParser(description="Load test script")
-parser.add_argument("--user", type=int, default=1000, help="Number of users")
+parser.add_argument("--muser", type=int, default=1000, help="Max number of users")
 parser.add_argument("--rate", type=int, default=1, help="Spawn rate")
+parser.add_argument("--user", type=int, default=1, help="Initial number of users")
+parser.add_argument("--tick", type=int, default=1, help="Tick time in seconds")
 args, _ = parser.parse_known_args()
 
-print("Number of users: ", args.user)
+
+
+print("Number of users: ", args.muser)
 print("Spawn rate: ", args.rate)
+print("Initial number of users: ", args.user)
+print("Tick time: ", args.tick)
 
 IMAGE_FOLDER = "inputfolder"  # Folder containing images
 image_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Client', IMAGE_FOLDER)
@@ -51,14 +57,18 @@ def monitor_failures(environment):
             break
 
 class LinearLoadShape(LoadTestShape):
-    max_users = args.user
+    max_users = args.muser
     spawn_rate = args.rate
+    initial_users = args.user
+    step_time = args.tick  # seconds
 
     def tick(self):
         run_time = self.get_run_time()
-        if run_time * self.spawn_rate >= self.max_users:
+        ramp_users = int(run_time * self.spawn_rate)
+        total_users = self.initial_users + ramp_users
+        if total_users >= self.max_users:
             return None
-        total_users = int(run_time * self.spawn_rate)
+        # total_users = int(run_time * self.spawn_rate)
         return (total_users, self.spawn_rate)
 
 
