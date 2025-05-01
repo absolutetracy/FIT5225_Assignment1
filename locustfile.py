@@ -1,8 +1,15 @@
 from locust import HttpUser, TaskSet, task, between, LoadTestShape
-import uuid, base64, os, time
+import uuid, base64, os, time, random, argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import gevent
 
+parser = argparse.ArgumentParser(description="Load test script")
+parser.add_argument("--user", type=int, default=1000, help="Number of users")
+parser.add_argument("--rate", type=int, default=1, help="Spawn rate")
+args, _ = parser.parse_known_args()
+
+print("Number of users: ", args.user)
+print("Spawn rate: ", args.rate)
 
 IMAGE_FOLDER = "inputfolder"  # Folder containing images
 image_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Client', IMAGE_FOLDER)
@@ -30,19 +37,22 @@ def monitor_failures(environment):
         fail_ratio = environment.runner.stats.total.fail_ratio
         if fail_ratio > FAILURE_THRESHOLD:
             current_users = environment.runner.user_count
+            avg_response_time = environment.runner.stats.total.avg_response_time
+            print(f"Average response time: {avg_response_time:.2f} ms")
             print(f"Failure ratio exceeded: {fail_ratio:.2f} > {FAILURE_THRESHOLD}")
             print(f"The number of users: {current_users}")
             with open("failure_log.txt", "a") as log_file:
                 log_file.write(f"Test time: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
                 log_file.write(f"Failure ratio exceeded: {fail_ratio:.2f} > {FAILURE_THRESHOLD}\n")
                 log_file.write(f"Failure at {current_users} users\n")
+                log_file.write(f"Average response time: {avg_response_time:.2f} ms\n")
 
             environment.runner.quit()
             break
 
 class LinearLoadShape(LoadTestShape):
-    max_users = 1000
-    spawn_rate = 1
+    max_users = args.user
+    spawn_rate = args.rate
 
     def tick(self):
         run_time = self.get_run_time()
@@ -76,14 +86,16 @@ class HelloWorldUser(HttpUser):
                 if response.status_code != 200:
                     response.failure(f"Failed! Status: {response.status_code}")
 
-        with ThreadPoolExecutor() as executor:
-            futures = [executor.submit(send_request, image) for image in images]
-            for future in as_completed(futures):
-                try:
-                    future.result()
-                except Exception as e:
-                    print(f"Exception: {e}")
-
+        # with ThreadPoolExecutor() as executor:
+        #     futures = [executor.submit(send_request, image) for image in images]
+        #     for future in as_completed(futures):
+        #         try:
+        #             future.result()
+        #         except Exception as e:
+        #             print(f"Exception: {e}")
+        for image in images:
+            send_request(image)
+        #send_request(random.choice(images))
     
 
     def on_start(self):
